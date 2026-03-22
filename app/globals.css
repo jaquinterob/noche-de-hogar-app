@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Solo blanco, negro y escala de grises */
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --muted: #737373;
+  /* Acento = negro (botones primarios, enlaces fuertes) */
+  --accent: #0a0a0a;
+  --accent-foreground: #ffffff;
+  --card: #ffffff;
+  --border: #e5e5e5;
+  --ring: #525252;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+  --muted: #a3a3a3;
+  /* Acento = blanco suave (CTA sobre fondo oscuro) */
+  --accent: #fafafa;
+  --accent-foreground: #0a0a0a;
+  --card: #171717;
+  --border: #404040;
+  --ring: #a3a3a3;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
