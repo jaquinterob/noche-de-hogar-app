@@ -10,12 +10,14 @@
     "build": "next build",
     "build:turbopack": "next build --turbopack",
     "start": "next start",
+    "icons:build": "magick -background none design/favicon.svg -resize 32x32 PNG32:app/icon.png && magick -background none design/favicon.svg -resize 180x180 PNG32:app/apple-icon.png && magick -background none design/favicon.svg -define icon:auto-resize=16,32,48 app/favicon.ico",
     "lint": "eslint",
     "scrape": "tsx scripts/run-scraper.ts"
   },
   "dependencies": {
     "mongoose": "^9.3.1",
     "next": "15.5.14",
+    "next-auth": "5.0.0-beta.30",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
