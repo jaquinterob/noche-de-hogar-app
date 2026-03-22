@@ -1,4 +1,11 @@
 import Link from "next/link";
+import {
+  buildSessionTimingReport,
+  formatDateTimeEs,
+  formatDurationEs,
+  formatTimeEs,
+  hasAnySessionTiming,
+} from "@/lib/session-timing";
 import type { FamilyHomeEvening } from "@/lib/types/fhe";
 
 function fmtDate(iso: string) {
@@ -81,6 +88,99 @@ export function FHEAgenda({
           </Link>
         ) : null}
       </div>
+
+      {hasAnySessionTiming(agenda) ? (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Tiempos de la reunión
+          </p>
+          {(() => {
+            const r = buildSessionTimingReport(agenda);
+            return (
+              <div className="mt-3 space-y-3 text-sm">
+                <div className="flex flex-wrap gap-x-6 gap-y-2 border-b border-border pb-3">
+                  <div>
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted">
+                      Inicio (seguimiento)
+                    </p>
+                    <p className="font-medium text-foreground">
+                      {r.sessionStartedAt
+                        ? formatDateTimeEs(r.sessionStartedAt)
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted">
+                      Último momento marcado
+                    </p>
+                    <p className="font-medium text-foreground">
+                      {r.lastStepCompletedAt
+                        ? formatDateTimeEs(r.lastStepCompletedAt)
+                        : "—"}
+                    </p>
+                  </div>
+                  {agenda.status === "completed" && r.completedAt ? (
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted">
+                        Cierre en app
+                      </p>
+                      <p className="font-medium text-foreground">
+                        {formatDateTimeEs(r.completedAt)}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-1">
+                  {r.durationUntilLastStepMs != null ? (
+                    <p className="text-foreground">
+                      <span className="text-muted">Hasta completar guion: </span>
+                      <span className="font-semibold tabular-nums">
+                        {formatDurationEs(r.durationUntilLastStepMs)}
+                      </span>
+                    </p>
+                  ) : null}
+                  {r.durationUntilClosedMs != null ? (
+                    <p className="text-foreground">
+                      <span className="text-muted">Hasta marcar realizada: </span>
+                      <span className="font-semibold tabular-nums">
+                        {formatDurationEs(r.durationUntilClosedMs)}
+                      </span>
+                    </p>
+                  ) : null}
+                </div>
+                <ul className="space-y-2 border-t border-border pt-3">
+                  {r.orderedSteps.map((row) => (
+                    <li
+                      key={row.key}
+                      className="flex flex-wrap items-baseline justify-between gap-2 text-xs"
+                    >
+                      <span className="font-medium text-foreground">
+                        {row.label}
+                      </span>
+                      <span className="text-right text-muted">
+                        {row.completedAtIso ? (
+                          <>
+                            <span className="tabular-nums">
+                              {formatTimeEs(row.completedAtIso)}
+                            </span>
+                            {row.durationMs != null ? (
+                              <span className="ml-2 text-foreground">
+                                · {formatDurationEs(row.durationMs)}
+                              </span>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span>—</span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
+        </div>
+      ) : null}
 
       <ul className="space-y-4 rounded-xl border border-border bg-card p-4">
         {rows.map((r) => (

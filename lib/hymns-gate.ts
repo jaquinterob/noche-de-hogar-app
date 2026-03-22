@@ -1,6 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { verifyHymnsAccessKeyPlain } from "@/lib/hymns-access-verify";
 import { getAppSettings } from "@/lib/models/AppSettings";
 
 export const HYMNS_ADMIN_COOKIE = "noche_hymns_admin";
@@ -20,17 +21,9 @@ function fingerprintKey(dbKey: string): string {
   return createHash("sha256").update(dbKey, "utf8").digest("hex");
 }
 
-function hashAttempt(input: string): Buffer {
-  return createHash("sha256").update(input, "utf8").digest();
-}
-
 /** Compara la clave enviada con la guardada en MongoDB (resistente a timing). */
 export async function verifyHymnsUnlockKey(input: string): Promise<boolean> {
-  const settings = await getAppSettings();
-  const a = hashAttempt(input);
-  const b = hashAttempt(settings.hymnsAccessKey);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+  return verifyHymnsAccessKeyPlain(input);
 }
 
 export function signHymnsAdminSession(dbKey: string): string {
@@ -109,11 +102,22 @@ export async function hasHymnsAdminFromCookies(): Promise<boolean> {
   return verifyHymnsAdminSessionToken(token, settings.hymnsAccessKey);
 }
 
+/**
+ * Sesión admin: cabecera `Cookie` (p. ej. fetch con credentials) o `cookies()` del
+ * manejador de Next (por si el header no llega igual en todos los despliegues).
+ */
+export async function isHymnsAdminRequest(request: Request): Promise<boolean> {
+  if (await hasHymnsAdminCookie(request.headers.get("cookie"))) {
+    return true;
+  }
+  return hasHymnsAdminFromCookies();
+}
+
 /** Para rutas API: devuelve `NextResponse` 401 o `null` si OK. */
 export async function requireHymnsAdminApi(
   request: Request,
 ): Promise<NextResponse | null> {
-  const ok = await hasHymnsAdminCookie(request.headers.get("cookie"));
+  const ok = await isHymnsAdminRequest(request);
   if (!ok) {
     return NextResponse.json(
       { error: "No autorizado. Accede con clave en /himnos/acceso." },

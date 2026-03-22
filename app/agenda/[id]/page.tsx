@@ -2,30 +2,53 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FHEAgenda } from "@/components/FHEAgenda";
 import {
-  deleteAgenda,
-  getAgendaById,
-  markAgendaCompleted,
-} from "@/lib/storage";
+  fetchAgendaByIdRemote,
+  useFamilyData,
+} from "@/components/FamilyDataProvider";
+import { withAgendaCompleted } from "@/lib/agenda-step-updates";
 import type { FamilyHomeEvening } from "@/lib/types/fhe";
 
 export default function AgendaDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
+  const { agendas, familyId, loading, deleteAgenda, saveAgenda } =
+    useFamilyData();
   const [agenda, setAgenda] = useState<FamilyHomeEvening | null | undefined>(
     undefined,
   );
 
-  const load = useCallback(() => {
-    setAgenda(getAgendaById(id) ?? null);
-  }, [id]);
+  const agendasRef = useRef(agendas);
+  agendasRef.current = agendas;
+
+  const load = useCallback(async () => {
+    const fromList = agendasRef.current.find((a) => a.id === id);
+    if (fromList) {
+      setAgenda(fromList);
+      return;
+    }
+    if (familyId) {
+      const remote = await fetchAgendaByIdRemote(familyId, id);
+      setAgenda(remote ?? null);
+      return;
+    }
+    setAgenda(null);
+  }, [id, familyId]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (loading) return;
+    void load();
+  }, [loading, load]);
+
+  /* Cuando el contexto trae la agenda (p. ej. tras guardar), sincronizar sin depender de `load` en cada cambio de referencia del array. */
+  useEffect(() => {
+    if (loading) return;
+    const fromList = agendas.find((a) => a.id === id);
+    if (fromList) setAgenda(fromList);
+  }, [loading, id, agendas]);
 
   if (agenda === undefined) {
     return <p className="text-muted">Cargando…</p>;
@@ -47,15 +70,19 @@ export default function AgendaDetailPage() {
 
   const planned = agenda.status === "planned";
 
-  function onDelete() {
+  async function onDelete() {
     if (!planned) return;
     if (!confirm("¿Eliminar esta agenda?")) return;
-    deleteAgenda(id);
-    router.push("/agendas");
+    try {
+      await deleteAgenda(id);
+      router.push("/agendas");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "No se pudo eliminar");
+    }
   }
 
-  function onMarkDone() {
-    if (!planned) return;
+  async function onMarkDone() {
+    if (!planned || agenda == null) return;
     if (
       !confirm(
         "¿Marcar como realizada? Quedará en el histórico y no podrás editarla ni borrarla.",
@@ -63,8 +90,12 @@ export default function AgendaDetailPage() {
     ) {
       return;
     }
-    markAgendaCompleted(id);
-    load();
+    try {
+      const saved = await saveAgenda(withAgendaCompleted(agenda));
+      setAgenda(saved);
+    } catch {
+      alert("No se pudo actualizar. Revisa la conexión.");
+    }
   }
 
   return (
@@ -90,14 +121,14 @@ export default function AgendaDetailPage() {
           </Link>
           <button
             type="button"
-            onClick={onMarkDone}
+            onClick={() => void onMarkDone()}
             className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background"
           >
             Marcar como realizada
           </button>
           <button
             type="button"
-            onClick={onDelete}
+            onClick={() => void onDelete()}
             className="rounded-lg px-4 py-2 text-sm text-muted underline decoration-neutral-400 decoration-1 underline-offset-2 hover:text-foreground dark:decoration-neutral-500"
           >
             Eliminar

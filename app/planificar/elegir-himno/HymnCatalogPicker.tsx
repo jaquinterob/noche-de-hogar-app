@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { HymnJSON } from "@/lib/hymn-serialize";
+import { loadHymnsCatalogForUi } from "@/lib/hymns-catalog-load";
 import {
   applyHymnToForm,
   loadHymnPickerContext,
@@ -38,25 +39,10 @@ export function HymnCatalogPicker() {
   const loadCatalog = useCallback(async (q: string) => {
     setLoading(true);
     setError("");
-    try {
-      const url =
-        q.trim().length > 0
-          ? `/api/hymns/catalog?q=${encodeURIComponent(q.trim())}`
-          : "/api/hymns/catalog";
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data?.error) {
-        setError(String(data.error));
-        setList([]);
-        return;
-      }
-      setList(Array.isArray(data) ? data : []);
-    } catch {
-      setError("No se pudo cargar el catálogo.");
-      setList([]);
-    } finally {
-      setLoading(false);
-    }
+    const { list: rows, error: err } = await loadHymnsCatalogForUi(q);
+    setList(rows);
+    setError(err);
+    setLoading(false);
   }, []);
 
   useEffect(() => {

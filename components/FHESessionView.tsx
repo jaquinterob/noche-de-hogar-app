@@ -15,15 +15,21 @@ import {
   type DirectorCue,
   type ScriptSegment,
 } from "@/lib/session-steps";
+import { useFamilyData } from "@/components/FamilyDataProvider";
 import {
-  getAgendaById,
-  markAgendaCompleted,
-  updateAgendaCompletedSteps,
-} from "@/lib/storage";
+  assigneeNameForCueKey,
+  emojiForMemberName,
+} from "@/lib/member-emoji";
+import {
+  withAgendaCompleted,
+  withCompletedStepsPatch,
+  withSessionStartedIfNeeded,
+} from "@/lib/agenda-step-updates";
 import type {
   CompletedStepKey,
   CompletedSteps,
   FamilyHomeEvening,
+  FamilyMember,
 } from "@/lib/types/fhe";
 
 function firstIncompleteIndex(
@@ -34,11 +40,57 @@ function firstIncompleteIndex(
   return i >= 0 ? i : 0;
 }
 
+const ASSIGNEE_LABEL: Partial<Record<CompletedStepKey, string>> = {
+  preside: "Preside",
+  conducts: "Dirige",
+  welcome: "Bienvenida",
+  openingPrayer: "Oración",
+  spiritualThought: "Pensamiento",
+  mainMessage: "Mensaje",
+  activity: "Actividad",
+  closingPrayer: "Oración final",
+};
+
+/** Línea bajo el título del paso: quién tiene a cargo (emoji en UI). No en “Dirige”: ya va en el header. */
+function assigneeLineForSlide(
+  key: CompletedStepKey,
+  agenda: FamilyHomeEvening,
+): { label: string; name: string } | null {
+  if (key === "conducts") return null;
+  const name = assigneeNameForCueKey(key, agenda);
+  if (!name) return null;
+  const short = ASSIGNEE_LABEL[key];
+  if (!short) return null;
+  return { label: `${short}:`, name };
+}
+
 export function FHESessionView({ agenda }: { agenda: FamilyHomeEvening }) {
   const router = useRouter();
+  const { members, saveAgenda } = useFamilyData();
   const [local, setLocal] = useState(agenda);
+
+  /* Solo al cambiar de agenda (misma pantalla puede actualizar vía saveAgenda). */
+  useEffect(() => {
+    setLocal(agenda);
+  }, [agenda.id]); // eslint-disable-line react-hooks/exhaustive-deps -- sincronizar solo por id
+
   const cues = useMemo(() => getDirectorCues(local), [local]);
   const planned = local.status === "planned";
+
+  const sessionStartSynced = useRef(false);
+  useEffect(() => {
+    if (!planned || sessionStartSynced.current) return;
+    sessionStartSynced.current = true;
+    const next = withSessionStartedIfNeeded(agenda);
+    if (next === agenda) return;
+    void saveAgenda(next).then((saved) => setLocal(saved));
+  }, [planned, agenda, saveAgenda]);
+
+  const conductsEmoji = useMemo(
+    () => emojiForMemberName(members, local.conducts),
+    [members, local.conducts],
+  );
+  const conductsName = local.conducts.trim();
 
   const [currentIndex, setCurrentIndex] = useState(() =>
     firstIncompleteIndex(
@@ -83,16 +135,17 @@ export function FHESessionView({ agenda }: { agenda: FamilyHomeEvening }) {
   const setCompleted = useCallback(
     (key: CompletedStepKey, checked: boolean) => {
       if (!planned) return;
+      let next: FamilyHomeEvening | undefined;
       setLocal((prev) => {
-        const nextSteps: CompletedSteps = {
-          ...prev.completedSteps,
-          [key]: checked,
-        };
-        updateAgendaCompletedSteps(prev.id, { [key]: checked });
-        return { ...prev, completedSteps: nextSteps };
+        next = withCompletedStepsPatch(prev, { [key]: checked });
+        return next;
+      });
+      /* saveAgenda actualiza FamilyDataProvider: fuera del updater y tras el commit de este setState. */
+      queueMicrotask(() => {
+        if (next) void saveAgenda(next).then((saved) => setLocal(saved));
       });
     },
-    [planned],
+    [planned, saveAgenda],
   );
 
   const goNext = useCallback(() => {
@@ -108,29 +161,31 @@ export function FHESessionView({ agenda }: { agenda: FamilyHomeEvening }) {
       if (!planned) return;
       const cue = cues[slideIndex];
       if (!cue) return;
+      let next: FamilyHomeEvening | undefined;
       setLocal((prev) => {
         if (prev.completedSteps?.[cue.key]) return prev;
-        const nextSteps: CompletedSteps = {
-          ...prev.completedSteps,
-          [cue.key]: true,
-        };
-        updateAgendaCompletedSteps(prev.id, { [cue.key]: true });
-        return { ...prev, completedSteps: nextSteps };
+        next = withCompletedStepsPatch(prev, { [cue.key]: true });
+        return next;
+      });
+      if (!next) return;
+      const toSave = next;
+      queueMicrotask(() => {
+        void saveAgenda(toSave).then((saved) => setLocal(saved));
       });
       if (slideIndex < n - 1) {
         setCurrentIndex(slideIndex + 1);
       }
     },
-    [planned, cues, n],
+    [planned, cues, n, saveAgenda],
   );
 
   const markReunionRealizada = useCallback(() => {
-    markAgendaCompleted(local.id);
-    const fresh = getAgendaById(local.id);
-    if (fresh) setLocal(fresh);
-    setCelebrationOpen(false);
+    void saveAgenda(withAgendaCompleted(local)).then((saved) => {
+      setLocal(saved);
+      setCelebrationOpen(false);
+    });
     router.refresh();
-  }, [local.id, router]);
+  }, [local, saveAgenda, router]);
 
   function onFooterMarkClick() {
     if (allDone) {
@@ -187,6 +242,23 @@ export function FHESessionView({ agenda }: { agenda: FamilyHomeEvening }) {
               Noche de Hogar
             </h1>
             <p className="mt-1 text-xs text-muted">{dateShort}</p>
+            {conductsName ? (
+              <p className="mt-2 flex flex-wrap items-center gap-1.5 text-sm">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Dirige
+                </span>
+                {conductsEmoji ? (
+                  <span
+                    className="text-lg leading-none"
+                    title={conductsName}
+                    aria-hidden
+                  >
+                    {conductsEmoji}
+                  </span>
+                ) : null}
+                <span className="font-medium text-foreground">{conductsName}</span>
+              </p>
+            ) : null}
           </div>
           <div
             className="relative flex h-14 w-14 shrink-0 items-center justify-center"
@@ -268,6 +340,8 @@ export function FHESessionView({ agenda }: { agenda: FamilyHomeEvening }) {
               >
                 <DirectorSlide
                   cue={cue}
+                  agenda={local}
+                  members={members}
                   planned={planned}
                   checked={!!local.completedSteps?.[cue.key]}
                   onToggleIncomplete={() => setCompleted(cue.key, false)}
@@ -376,7 +450,7 @@ function NocheCompletadaModal({
 
   return (
     <div
-      className="fixed inset-0 z-200 flex items-end justify-center p-4 sm:items-center"
+      className="fixed inset-0 z-200 flex items-center justify-center p-4"
       role="presentation"
     >
       <button
@@ -658,33 +732,58 @@ function HechoCheckboxRow({
 function ScriptParagraph({
   cueId,
   segments,
+  members,
+  /** Si ya mostramos emoji+nombre arriba (línea a cargo), no repetir en el guion. */
+  omitEmojiForName,
 }: {
   cueId: string;
   segments: ScriptSegment[];
+  members: FamilyMember[];
+  omitEmojiForName?: string | null;
 }) {
+  const omit = omitEmojiForName?.trim() ?? "";
   return (
     <p
       id={`script-${cueId}`}
       className="text-balance text-left text-base leading-relaxed sm:text-[1.05rem]"
     >
-      {segments.map((seg, i) => (
-        <span
-          key={i}
-          className={
-            seg.emphasize
-              ? "font-semibold text-foreground underline decoration-neutral-400/70 decoration-1 underline-offset-[3px] dark:decoration-neutral-500"
-              : "text-foreground/85"
-          }
-        >
-          {seg.text}
-        </span>
-      ))}
+      {segments.map((seg, i) => {
+        const t = seg.text.trim();
+        const skipEmoji =
+          !!omit && !!t && t === omit;
+        const memberEmoji =
+          seg.emphasize && t && !skipEmoji
+            ? emojiForMemberName(members, seg.text)
+            : undefined;
+        return (
+          <span
+            key={i}
+            className={
+              seg.emphasize
+                ? "font-semibold text-foreground underline decoration-neutral-400/70 decoration-1 underline-offset-[3px] dark:decoration-neutral-500"
+                : "text-foreground/85"
+            }
+          >
+            {memberEmoji ? (
+              <span
+                className="mr-1 inline-block align-text-bottom text-[1.2em] leading-none"
+                aria-hidden
+              >
+                {memberEmoji}
+              </span>
+            ) : null}
+            {seg.text}
+          </span>
+        );
+      })}
     </p>
   );
 }
 
 function DirectorSlide({
   cue,
+  agenda,
+  members,
   planned,
   checked,
   onToggleIncomplete,
@@ -692,12 +791,19 @@ function DirectorSlide({
   onHechoYSiguiente,
 }: {
   cue: DirectorCue;
+  agenda: FamilyHomeEvening;
+  members: FamilyMember[];
   planned: boolean;
   checked: boolean;
   onToggleIncomplete: () => void;
   isLast: boolean;
   onHechoYSiguiente: () => void;
 }) {
+  const assignee = assigneeLineForSlide(cue.key, agenda);
+  const assigneeEmoji = assignee
+    ? emojiForMemberName(members, assignee.name)
+    : undefined;
+
   return (
     <article
       className="mx-auto flex max-h-[min(68vh,540px)] min-h-0 max-w-md flex-col"
@@ -706,9 +812,25 @@ function DirectorSlide({
       <p className="shrink-0 text-center text-[10px] font-semibold uppercase tracking-[0.28em] text-muted">
         {cue.phaseLabel}
       </p>
+      {assignee ? (
+        <p className="mt-2 flex flex-wrap items-center justify-center gap-1.5 text-center text-sm">
+          <span className="text-muted">{assignee.label}</span>
+          {assigneeEmoji ? (
+            <span className="text-xl leading-none" aria-hidden>
+              {assigneeEmoji}
+            </span>
+          ) : null}
+          <span className="font-semibold text-foreground">{assignee.name}</span>
+        </p>
+      ) : null}
 
       <div className="mt-2 min-h-0 max-h-[min(36vh,260px)] shrink overflow-y-auto overscroll-y-contain pr-1 [scrollbar-gutter:stable]">
-        <ScriptParagraph cueId={cue.key} segments={cue.segments} />
+        <ScriptParagraph
+          cueId={cue.key}
+          segments={cue.segments}
+          members={members}
+          omitEmojiForName={assignee ? assignee.name : null}
+        />
       </div>
 
       <div className="mt-3 shrink-0 space-y-3 border-t border-border pt-3">

@@ -4,7 +4,7 @@ import { HimnosAccesoForm } from "./HimnosAccesoForm";
 
 export default async function HimnosAccesoPage() {
   if (await hasHymnsAdminFromCookies()) {
-    redirect("/himnos");
+    redirect("/himnos/admin");
   }
   return <HimnosAccesoForm />;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { HymnJSON } from "@/lib/hymn-serialize";
@@ -38,25 +39,6 @@ export function HimnosAdminClient() {
   useEffect(() => {
     refresh();
   }, [refresh]);
-
-  async function seed() {
-    setMsg("");
-    const res = await fetch("/api/hymns/seed", {
-      method: "POST",
-      credentials: "include",
-    });
-    if (res.status === 401) {
-      router.replace("/himnos/acceso");
-      return;
-    }
-    const j = await res.json();
-    setMsg(
-      j.error
-        ? j.error
-        : `Seed: +${j.inserted ?? 0} nuevos. Total: ${j.count ?? "?"}`,
-    );
-    refresh();
-  }
 
   async function scrape() {
     setMsg("Scraper en curso (puede tardar mucho vía web)…");
@@ -105,13 +87,21 @@ export function HimnosAdminClient() {
             ).
           </p>
         </div>
-        <button
-          type="button"
-          onClick={cerrarSesion}
-          className="shrink-0 rounded-lg border border-border px-3 py-2 text-sm text-muted hover:text-foreground"
-        >
-          Cerrar sesión
-        </button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Link
+            href="/himnos"
+            className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:text-foreground"
+          >
+            Ver catálogo público
+          </Link>
+          <button
+            type="button"
+            onClick={cerrarSesion}
+            className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:text-foreground"
+          >
+            Cerrar sesión
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -122,13 +112,6 @@ export function HimnosAdminClient() {
           className="rounded-lg border border-border px-3 py-2 text-sm"
         >
           Actualizar
-        </button>
-        <button
-          type="button"
-          onClick={seed}
-          className="rounded-lg bg-accent px-3 py-2 text-sm text-accent-foreground"
-        >
-          Datos de ejemplo (seed)
         </button>
         <button
           type="button"
@@ -152,7 +135,10 @@ export function HimnosAdminClient() {
 
       <ul className="max-h-[60vh] space-y-2 overflow-y-auto rounded-xl border border-border bg-card p-3">
         {list.length === 0 ? (
-          <li className="text-sm text-muted">Sin himnos. Prueba el seed.</li>
+          <li className="text-sm text-muted">
+            Sin himnos. Ejecuta el scrape (botón de arriba) o en terminal{" "}
+            <code className="rounded bg-border px-1">yarn scrape</code>.
+          </li>
         ) : (
           list.map((h) => (
             <li

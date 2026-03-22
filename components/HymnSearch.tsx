@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { HymnJSON } from "@/lib/hymn-serialize";
+import { readHymnsCache, searchHymnsLocal } from "@/lib/hymns-local-cache";
 
 export type HymnPick = {
   number: number;
@@ -41,13 +42,24 @@ export function HymnSearch({
       const res = await fetch(
         `/api/hymns/search?q=${encodeURIComponent(t)}`,
       );
-      const data = await res.json();
-      setResults(Array.isArray(data) ? data : []);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setResults(data);
+          setLoading(false);
+          return;
+        }
+      }
     } catch {
-      setResults([]);
-    } finally {
-      setLoading(false);
+      /* red o respuesta inválida → caché */
     }
+    const cache = readHymnsCache();
+    if (cache) {
+      setResults(searchHymnsLocal(cache, t));
+    } else {
+      setResults([]);
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -118,27 +130,25 @@ export function HymnSearch({
           )}
           {open && (results.length > 0 || loading) && (
             <ul
-              className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-card py-1 shadow-lg"
+              className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-border bg-card py-1 shadow-lg"
               role="listbox"
             >
-              {loading && (
+              {loading ? (
                 <li className="px-3 py-2 text-sm text-muted">Buscando…</li>
-              )}
-              {!loading &&
+              ) : (
                 results.map((h) => (
-                  <li key={h.id}>
+                  <li key={h.id} role="option" aria-selected={false}>
                     <button
                       type="button"
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-background"
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted/50"
                       onClick={() => pick(h)}
                     >
-                      <span className="font-medium">#{h.number}</span>{" "}
-                      <span className="break-words whitespace-normal">
-                        {h.title}
-                      </span>
+                      <span className="text-muted">#{h.number}</span>{" "}
+                      {h.title}
                     </button>
                   </li>
-                ))}
+                ))
+              )}
             </ul>
           )}
         </>

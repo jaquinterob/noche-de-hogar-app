@@ -1,27 +1,36 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { FamilyEmojiPicker } from "@/components/FamilyEmojiPicker";
-import { getMembers, setMembers } from "@/lib/storage";
+import { useFamilyData } from "@/components/FamilyDataProvider";
 import type { FamilyMember } from "@/lib/types/fhe";
 
 export default function FamiliaPage() {
-  const [members, setMembersState] = useState<FamilyMember[]>([]);
+  const { members, lastName, updateFamily } = useFamilyData();
   const [name, setName] = useState("");
   const [newEmoji, setNewEmoji] = useState<string | undefined>(undefined);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmoji, setEditEmoji] = useState<string | undefined>(undefined);
-
-  const load = useCallback(() => {
-    setMembersState(getMembers());
-  }, []);
+  const [familyLastName, setFamilyLastNameInput] = useState("");
+  const [lastNameSavedMsg, setLastNameSavedMsg] = useState(false);
+  const [lastNameError, setLastNameError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    setFamilyLastNameInput(lastName);
+  }, [lastName]);
 
-  function add(e: React.FormEvent) {
+  async function persistMembers(next: FamilyMember[]) {
+    setBusy(true);
+    try {
+      await updateFamily({ members: next });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function add(e: React.FormEvent) {
     e.preventDefault();
     const n = name.trim();
     if (!n) return;
@@ -33,8 +42,7 @@ export default function FamiliaPage() {
         ...(newEmoji ? { emoji: newEmoji } : {}),
       },
     ];
-    setMembers(next);
-    setMembersState(next);
+    await persistMembers(next);
     setName("");
     setNewEmoji(undefined);
   }
@@ -45,7 +53,7 @@ export default function FamiliaPage() {
     setEditEmoji(m.emoji);
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     if (!editingId) return;
     const n = editName.trim();
     if (!n) return;
@@ -59,17 +67,39 @@ export default function FamiliaPage() {
         ...(editEmoji ? { emoji: editEmoji } : {}),
       };
     });
-    setMembers(next);
-    setMembersState(next);
+    await persistMembers(next);
     setEditingId(null);
   }
 
-  function remove(id: string) {
+  async function remove(id: string) {
+    if (members.length <= 1) {
+      alert(
+        "Debe haber al menos un integrante en la familia. Añade otro antes de borrar este.",
+      );
+      return;
+    }
     if (!confirm("¿Eliminar este miembro de la lista?")) return;
     const next = members.filter((m) => m.id !== id);
-    setMembers(next);
-    setMembersState(next);
+    await persistMembers(next);
     if (editingId === id) setEditingId(null);
+  }
+
+  async function saveFamilyLastName(e: React.FormEvent) {
+    e.preventDefault();
+    const t = familyLastName.trim();
+    if (!t) {
+      setLastNameError("Los apellidos no pueden quedar vacíos.");
+      return;
+    }
+    setLastNameError("");
+    setBusy(true);
+    try {
+      await updateFamily({ lastName: t });
+      setLastNameSavedMsg(true);
+      setTimeout(() => setLastNameSavedMsg(false), 2500);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -77,10 +107,51 @@ export default function FamiliaPage() {
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Familia</h1>
         <p className="mt-2 text-sm text-muted">
-          Los miembros se guardan solo en este navegador. Las agendas ya
-          creadas conservan los nombres tal como estaban al guardarlas.
+          Apellidos e integrantes se guardan en la base de datos, ligados a tu
+          familia. Las agendas del histórico conservan los nombres tal como
+          estaban al guardarlas. Debe haber{" "}
+          <strong className="text-foreground">al menos un integrante</strong>.
         </p>
       </div>
+
+      <form
+        onSubmit={saveFamilyLastName}
+        className="rounded-xl border border-border bg-card p-4"
+      >
+        <label
+          htmlFor="familia-apellidos"
+          className="text-xs font-semibold uppercase tracking-wide text-muted"
+        >
+          Apellidos de la familia
+        </label>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            id="familia-apellidos"
+            value={familyLastName}
+            onChange={(e) => {
+              setFamilyLastNameInput(e.target.value);
+              setLastNameError("");
+            }}
+            className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2"
+            placeholder="Ej. Pérez López"
+            autoComplete="family-name"
+            disabled={busy}
+          />
+          <button
+            type="submit"
+            disabled={busy}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-50"
+          >
+            Guardar apellidos
+          </button>
+        </div>
+        {lastNameError ? (
+          <p className="mt-2 text-xs text-foreground">{lastNameError}</p>
+        ) : null}
+        {lastNameSavedMsg ? (
+          <p className="mt-2 text-xs text-muted">Guardado.</p>
+        ) : null}
+      </form>
 
       <form
         onSubmit={add}
@@ -96,6 +167,7 @@ export default function FamiliaPage() {
             onChange={(e) => setName(e.target.value)}
             placeholder="Nombre"
             className="w-full rounded-lg border border-border bg-card px-3 py-2"
+            disabled={busy}
           />
         </div>
         <div className="flex flex-col gap-2">
@@ -104,7 +176,8 @@ export default function FamiliaPage() {
         </div>
         <button
           type="submit"
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
+          disabled={busy}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-50"
         >
           Añadir
         </button>
@@ -130,10 +203,12 @@ export default function FamiliaPage() {
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     className="min-w-[140px] flex-1 rounded border border-border bg-background px-2 py-1 text-sm"
+                    disabled={busy}
                   />
                   <button
                     type="button"
-                    onClick={saveEdit}
+                    onClick={() => void saveEdit()}
+                    disabled={busy}
                     className="text-sm font-medium text-foreground underline decoration-neutral-400 underline-offset-2 dark:decoration-neutral-500"
                   >
                     Guardar
@@ -159,13 +234,15 @@ export default function FamiliaPage() {
                   <button
                     type="button"
                     onClick={() => startEdit(m)}
+                    disabled={busy}
                     className="text-sm font-medium text-foreground underline decoration-neutral-400 underline-offset-2 dark:decoration-neutral-500"
                   >
                     Editar
                   </button>
                   <button
                     type="button"
-                    onClick={() => remove(m.id)}
+                    onClick={() => void remove(m.id)}
+                    disabled={busy}
                     className="text-sm text-muted underline decoration-neutral-400 underline-offset-2 hover:text-foreground dark:decoration-neutral-500"
                   >
                     Borrar

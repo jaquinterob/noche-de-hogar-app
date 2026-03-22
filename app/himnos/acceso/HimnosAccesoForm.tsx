@@ -26,7 +26,7 @@ export function HimnosAccesoForm() {
         setError(typeof j.error === "string" ? j.error : "No se pudo acceder");
         return;
       }
-      router.replace("/himnos");
+      router.replace("/himnos/admin");
       router.refresh();
     } catch {
       setError("Error de red");
@@ -42,8 +42,12 @@ export function HimnosAccesoForm() {
           Acceso a himnos
         </h1>
         <p className="mt-2 text-sm text-muted">
-          Solo quien administra el catálogo puede entrar aquí. Si no tienes la
-          clave, usa el planificador y las agendas desde el inicio.
+          Con la clave accedes a <strong>administración</strong> (scrape y lista
+          completa). Para solo consultar himnos usa el menú{" "}
+          <Link href="/himnos" className="underline underline-offset-2">
+            Himnos
+          </Link>
+          .
         </p>
       </div>
 

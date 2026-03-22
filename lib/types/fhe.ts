@@ -1,4 +1,4 @@
-/** Snapshot de una Noche de Hogar (localStorage). Alineado a docs/REQUISITOS.md §4 y §5. */
+/** Noche de Hogar en cliente / API. Alineado a docs/REQUISITOS.md §4 y §5. */
 
 export type AgendaStatus = "planned" | "completed";
 
@@ -45,6 +45,10 @@ export interface FamilyHomeEvening {
   closingHymnUrl: string;
   closingPrayer: string;
   completedSteps?: CompletedSteps;
+  /** ISO: primera vez que se abrió seguimiento (inicio del registro de tiempos). */
+  sessionStartedAt?: string;
+  /** ISO: cuándo se marcó cada paso como hecho en seguimiento. */
+  stepCompletedAt?: Partial<Record<CompletedStepKey, string>>;
 }
 
 export function emptyAgenda(partial: Partial<FamilyHomeEvening> = {}): Omit<

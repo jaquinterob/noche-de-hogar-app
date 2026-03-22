@@ -4,25 +4,38 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { FHESessionView } from "@/components/FHESessionView";
-import { getAgendaById } from "@/lib/storage";
+import {
+  fetchAgendaByIdRemote,
+  useFamilyData,
+} from "@/components/FamilyDataProvider";
 import type { FamilyHomeEvening } from "@/lib/types/fhe";
 
 export default function SeguimientoPage() {
   const params = useParams();
   const id = params.id as string;
+  const { agendas, familyId, loading } = useFamilyData();
   const [agenda, setAgenda] = useState<FamilyHomeEvening | null | undefined>(
     undefined,
   );
 
-  const load = useCallback(() => {
-    setAgenda(getAgendaById(id) ?? null);
-  }, [id]);
+  const load = useCallback(async () => {
+    const fromList = agendas.find((a) => a.id === id);
+    if (fromList) {
+      setAgenda(fromList);
+      return;
+    }
+    if (familyId) {
+      const remote = await fetchAgendaByIdRemote(familyId, id);
+      setAgenda(remote ?? null);
+      return;
+    }
+    setAgenda(null);
+  }, [id, agendas, familyId]);
 
   useEffect(() => {
-    load();
-    const t = setInterval(load, 1200);
-    return () => clearInterval(t);
-  }, [load]);
+    if (loading) return;
+    void load();
+  }, [loading, load]);
 
   if (agenda === undefined) {
     return <p className="text-muted">Cargando…</p>;

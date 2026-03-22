@@ -1,31 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { getAgendas } from "@/lib/storage";
-import type { FamilyHomeEvening } from "@/lib/types/fhe";
+import { useMemo } from "react";
+import { useFamilyData } from "@/components/FamilyDataProvider";
+import {
+  buildSessionTimingReport,
+  formatDurationEs,
+  hasAnySessionTiming,
+} from "@/lib/session-timing";
 
 export default function AgendasPage() {
-  const [list, setList] = useState<FamilyHomeEvening[]>([]);
+  const { agendas, loading } = useFamilyData();
 
-  const load = useCallback(() => {
-    const a = getAgendas();
+  const list = useMemo(() => {
+    const a = [...agendas];
     a.sort(
       (x, y) => new Date(y.date).getTime() - new Date(x.date).getTime(),
     );
-    setList(a);
-  }, []);
-
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 800);
-    return () => clearInterval(t);
-  }, [load]);
+    return a;
+  }, [agendas]);
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-foreground">Agendas</h1>
-      {list.length === 0 ? (
+      {loading && list.length === 0 ? (
+        <p className="text-muted">Cargando…</p>
+      ) : null}
+      {list.length === 0 && !loading ? (
         <p className="text-muted">
           No hay agendas aún.{" "}
           <Link
@@ -35,7 +36,8 @@ export default function AgendasPage() {
             Planificar
           </Link>
         </p>
-      ) : (
+      ) : null}
+      {list.length > 0 ? (
         <ul className="space-y-3">
           {list.map((a) => (
             <li key={a.id}>
@@ -53,6 +55,18 @@ export default function AgendasPage() {
                     })}
                   </p>
                   <p className="text-sm text-muted">Preside: {a.preside}</p>
+                  {(() => {
+                    if (!hasAnySessionTiming(a)) return null;
+                    const r = buildSessionTimingReport(a);
+                    const ms =
+                      r.durationUntilClosedMs ?? r.durationUntilLastStepMs;
+                    if (ms == null) return null;
+                    return (
+                      <p className="mt-1 text-xs text-muted">
+                        Duración registrada: {formatDurationEs(ms)}
+                      </p>
+                    );
+                  })()}
                 </div>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${
@@ -67,7 +81,7 @@ export default function AgendasPage() {
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
     </div>
   );
 }

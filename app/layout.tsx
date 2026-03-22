@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { Header } from "@/components/Header";
+import { FamilyDataProvider } from "@/components/FamilyDataProvider";
+import { FamilyOnboardingGate } from "@/components/FamilyOnboardingGate";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
@@ -24,8 +25,9 @@ export default function RootLayout({
     <html lang="es" className={inter.variable} suppressHydrationWarning>
       <body className="min-h-screen font-sans antialiased">
         <ThemeProvider>
-          <Header />
-          <main className="mx-auto max-w-2xl px-4 py-8">{children}</main>
+          <FamilyDataProvider>
+            <FamilyOnboardingGate>{children}</FamilyOnboardingGate>
+          </FamilyDataProvider>
         </ThemeProvider>
       </body>
     </html>

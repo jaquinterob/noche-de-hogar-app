@@ -1,19 +1,18 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { HymnSearch, type HymnPick } from "@/components/HymnSearch";
+import { MemberPickerModal } from "@/components/MemberPickerModal";
 import {
   peekAndConsumeWizardReturn,
   saveHymnPickerContext,
 } from "@/lib/planificar-hymn-pick";
 import {
-  deleteAgenda,
-  getAgendaById,
-  getMembers,
-  upsertAgenda,
-} from "@/lib/storage";
-import type { FamilyHomeEvening, FamilyMember } from "@/lib/types/fhe";
+  fetchAgendaByIdRemote,
+  useFamilyData,
+} from "@/components/FamilyDataProvider";
+import type { FamilyHomeEvening } from "@/lib/types/fhe";
 
 /** Evita que un segundo efecto (p. ej. React Strict Mode) recargue la agenda y pise el himno elegido. */
 let suppressWizardHydrateOnce = false;
@@ -44,11 +43,13 @@ function newEmptyForm(): Omit<
 
 export function FHEWizard() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
+  const { members, familyId, agendas, saveAgenda, deleteAgenda } =
+    useFamilyData();
 
   const [step, setStep] = useState(1);
-  const [members, setMembers] = useState<FamilyMember[]>([]);
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10),
   );
@@ -73,14 +74,10 @@ export function FHEWizard() {
     [step, form, date, agendaId, editId, router],
   );
 
-  const refreshMembers = useCallback(() => {
-    setMembers(getMembers());
-  }, []);
-
-  useEffect(() => {
-    refreshMembers();
-  }, [refreshMembers]);
-
+  /**
+   * Restaurar borrador al volver del himno; si no, reset solo cuando cambia la ruta o ?edit=
+   * (no depender de `agendas` para no borrar el formulario en curso).
+   */
   useEffect(() => {
     const returned = peekAndConsumeWizardReturn();
     if (returned) {
@@ -99,48 +96,55 @@ export function FHEWizard() {
       setAgendaId(null);
       setForm(newEmptyForm());
       setStep(1);
-      return;
     }
-    const a = getAgendaById(editId);
-    if (!a || a.status !== "planned") {
-      router.replace("/agendas");
-      return;
-    }
-    setAgendaId(a.id);
-    setDate(a.date.slice(0, 10));
-    setForm({
-      preside: a.preside,
-      conducts: a.conducts,
-      welcomeBy: a.welcomeBy,
-      openingHymn: a.openingHymn,
-      openingHymnUrl: a.openingHymnUrl,
-      openingPrayer: a.openingPrayer,
-      spiritualThoughtBy: a.spiritualThoughtBy,
-      optionalHymn: a.optionalHymn,
-      optionalHymnUrl: a.optionalHymnUrl,
-      mainMessageBy: a.mainMessageBy,
-      activityBy: a.activityBy,
-      activityDescription: a.activityDescription,
-      closingHymn: a.closingHymn,
-      closingHymnUrl: a.closingHymnUrl,
-      closingPrayer: a.closingPrayer,
-      completedSteps: a.completedSteps ?? {},
-    });
-    setStep(1);
-  }, [editId, router]);
+  }, [pathname, searchParams, editId]);
 
-  const memberOptions = useMemo(
-    () =>
-      members.map((m) => {
-        const label = m.emoji ? `${m.emoji} ${m.name}` : m.name;
-        return (
-          <option key={m.id} value={m.name}>
-            {label}
-          </option>
-        );
-      }),
-    [members],
-  );
+  /* Editar agenda existente: cargar cuando exista en lista o por API */
+  useEffect(() => {
+    if (!editId) return;
+    const eid = editId;
+    let cancelled = false;
+    async function load() {
+      const returned = peekAndConsumeWizardReturn();
+      if (returned) return;
+      if (suppressWizardHydrateOnce) return;
+
+      let a = agendas.find((x) => x.id === eid);
+      if (!a && familyId) {
+        a = (await fetchAgendaByIdRemote(familyId, eid)) ?? undefined;
+      }
+      if (cancelled) return;
+      if (!a || a.status !== "planned") {
+        router.replace("/agendas");
+        return;
+      }
+      setAgendaId(a.id);
+      setDate(a.date.slice(0, 10));
+      setForm({
+        preside: a.preside,
+        conducts: a.conducts,
+        welcomeBy: a.welcomeBy,
+        openingHymn: a.openingHymn,
+        openingHymnUrl: a.openingHymnUrl,
+        openingPrayer: a.openingPrayer,
+        spiritualThoughtBy: a.spiritualThoughtBy,
+        optionalHymn: a.optionalHymn,
+        optionalHymnUrl: a.optionalHymnUrl,
+        mainMessageBy: a.mainMessageBy,
+        activityBy: a.activityBy,
+        activityDescription: a.activityDescription,
+        closingHymn: a.closingHymn,
+        closingHymnUrl: a.closingHymnUrl,
+        closingPrayer: a.closingPrayer,
+        completedSteps: a.completedSteps ?? {},
+      });
+      setStep(1);
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [editId, router, familyId, agendas]);
 
   const maxStep = 12;
 
@@ -184,22 +188,32 @@ export function FHEWizard() {
     if (step > 1) setStep(step - 1);
   }
 
-  function save() {
+  async function save() {
     if (!date) return;
     const id = agendaId ?? crypto.randomUUID();
     const isoDate = new Date(date + "T12:00:00").toISOString();
-    if (agendaId) {
-      const prev = getAgendaById(agendaId);
-      if (prev?.status === "completed") return;
-    }
+    const prev = agendaId
+      ? agendas.find((x) => x.id === agendaId)
+      : undefined;
+    if (agendaId && prev?.status === "completed") return;
     const agenda: FamilyHomeEvening = {
       id,
       date: isoDate,
       status: "planned",
       ...form,
+      ...(prev && prev.status === "planned"
+        ? {
+            sessionStartedAt: prev.sessionStartedAt,
+            stepCompletedAt: prev.stepCompletedAt,
+          }
+        : {}),
     };
-    upsertAgenda(agenda);
-    router.push(`/agenda/${id}`);
+    try {
+      await saveAgenda(agenda);
+      router.push(`/agenda/${id}`);
+    } catch {
+      alert("No se pudo guardar la agenda. Revisa MongoDB y la conexión.");
+    }
   }
 
   function cancelEdit() {
@@ -207,10 +221,14 @@ export function FHEWizard() {
     else router.push("/agendas");
   }
 
-  function removeDraft() {
+  async function removeDraft() {
     if (agendaId && editId) {
-      deleteAgenda(agendaId);
-      router.push("/agendas");
+      try {
+        await deleteAgenda(agendaId);
+        router.push("/agendas");
+      } catch {
+        alert("No se pudo eliminar la agenda.");
+      }
     }
   }
 
@@ -254,53 +272,41 @@ export function FHEWizard() {
           >
             Familia
           </a>{" "}
-          para usar los desplegables.
+          para elegirlos en el planificador.
         </p>
       )}
 
       <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
         {step === 1 && (
           <Field label="¿Quién preside?">
-            <select
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+            <MemberPickerModal
+              members={members}
               value={form.preside}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, preside: e.target.value }))
-              }
-            >
-              <option value="">— Elegir —</option>
-              {memberOptions}
-            </select>
+              onChange={(name) => setForm((f) => ({ ...f, preside: name }))}
+              title="¿Quién preside?"
+            />
           </Field>
         )}
 
         {step === 2 && (
           <Field label="¿Quién dirige?">
-            <select
-              className="w-full rounded-lg border border-border bg-background px-3 py-2"
+            <MemberPickerModal
+              members={members}
               value={form.conducts}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, conducts: e.target.value }))
-              }
-            >
-              <option value="">— Elegir —</option>
-              {memberOptions}
-            </select>
+              onChange={(name) => setForm((f) => ({ ...f, conducts: name }))}
+              title="¿Quién dirige?"
+            />
           </Field>
         )}
 
         {step === 3 && (
           <Field label="¿Quién da la bienvenida?">
-            <select
-              className="w-full rounded-lg border border-border bg-background px-3 py-2"
+            <MemberPickerModal
+              members={members}
               value={form.welcomeBy}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, welcomeBy: e.target.value }))
-              }
-            >
-              <option value="">— Elegir —</option>
-              {memberOptions}
-            </select>
+              onChange={(name) => setForm((f) => ({ ...f, welcomeBy: name }))}
+              title="¿Quién da la bienvenida?"
+            />
           </Field>
         )}
 
@@ -325,34 +331,27 @@ export function FHEWizard() {
 
         {step === 5 && (
           <Field label="Primera oración">
-            <select
-              className="w-full rounded-lg border border-border bg-background px-3 py-2"
+            <MemberPickerModal
+              members={members}
               value={form.openingPrayer}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, openingPrayer: e.target.value }))
+              onChange={(name) =>
+                setForm((f) => ({ ...f, openingPrayer: name }))
               }
-            >
-              <option value="">— Elegir —</option>
-              {memberOptions}
-            </select>
+              title="¿Quién ofrece la primera oración?"
+            />
           </Field>
         )}
 
         {step === 6 && (
           <Field label="Pensamiento espiritual">
-            <select
-              className="w-full rounded-lg border border-border bg-background px-3 py-2"
+            <MemberPickerModal
+              members={members}
               value={form.spiritualThoughtBy}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  spiritualThoughtBy: e.target.value,
-                }))
+              onChange={(name) =>
+                setForm((f) => ({ ...f, spiritualThoughtBy: name }))
               }
-            >
-              <option value="">— Elegir —</option>
-              {memberOptions}
-            </select>
+              title="¿Quién comparte el pensamiento espiritual?"
+            />
           </Field>
         )}
 
@@ -378,32 +377,28 @@ export function FHEWizard() {
 
         {step === 8 && (
           <Field label="Mensaje principal">
-            <select
-              className="w-full rounded-lg border border-border bg-background px-3 py-2"
+            <MemberPickerModal
+              members={members}
               value={form.mainMessageBy}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, mainMessageBy: e.target.value }))
+              onChange={(name) =>
+                setForm((f) => ({ ...f, mainMessageBy: name }))
               }
-            >
-              <option value="">— Elegir —</option>
-              {memberOptions}
-            </select>
+              title="¿Quién da el mensaje principal?"
+            />
           </Field>
         )}
 
         {step === 9 && (
           <>
             <Field label="¿Quién dirige la actividad?">
-              <select
-                className="w-full rounded-lg border border-border bg-background px-3 py-2"
+              <MemberPickerModal
+                members={members}
                 value={form.activityBy}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, activityBy: e.target.value }))
+                onChange={(name) =>
+                  setForm((f) => ({ ...f, activityBy: name }))
                 }
-              >
-                <option value="">— Elegir —</option>
-                {memberOptions}
-              </select>
+                title="¿Quién dirige la actividad?"
+              />
             </Field>
             <Field label="¿Qué haremos? (opcional)">
               <textarea
@@ -443,16 +438,14 @@ export function FHEWizard() {
 
         {step === 11 && (
           <Field label="Oración final">
-            <select
-              className="w-full rounded-lg border border-border bg-background px-3 py-2"
+            <MemberPickerModal
+              members={members}
               value={form.closingPrayer}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, closingPrayer: e.target.value }))
+              onChange={(name) =>
+                setForm((f) => ({ ...f, closingPrayer: name }))
               }
-            >
-              <option value="">— Elegir —</option>
-              {memberOptions}
-            </select>
+              title="¿Quién ofrece la oración final?"
+            />
           </Field>
         )}
 

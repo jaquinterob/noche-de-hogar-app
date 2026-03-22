@@ -5,6 +5,7 @@ const links = [
   { href: "/planificar", label: "Planificar" },
   { href: "/familia", label: "Familia" },
   { href: "/agendas", label: "Agendas" },
+  { href: "/himnos", label: "Himnos" },
 ];
 
 export function Header() {
