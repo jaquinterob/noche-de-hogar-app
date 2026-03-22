@@ -33,13 +33,19 @@ Planificador web para organizar la Noche de Hogar: agenda y familia.
 
    Abre [http://localhost:3000](http://localhost:3000).
 
-   Si ves errores `ENOENT` con `_buildManifest.js.tmp` en `.next`, para el servidor, borra la caché y vuelve a arrancar:
+   Por defecto usa **Webpack** (más estable). Si quieres **Turbopack** (más rápido, pero a veces falla con `ENOENT` / `_buildManifest.js.tmp`):
 
    ```bash
-   rm -rf .next && yarn dev
+   yarn dev:turbopack
    ```
 
-   Si sigue fallando, prueba sin Turbopack: `yarn dev:webpack`.
+   Si ves **`ENOENT` … `routes-manifest.json`**, **`_buildManifest.js.tmp`** u otro archivo dentro de **`.next`**: el caché de compilación quedó a medias (p. ej. borraste `.next` con el servidor encendido, o mezclaste `build` y `dev`). **Para el servidor** (`Ctrl+C`) y ejecuta:
+
+   ```bash
+   yarn dev:fresh
+   ```
+
+   (equivale a `yarn clean && yarn dev`).
 
 4. **Administración del catálogo de himnos** (solo tú, no aparece en el menú público):
 

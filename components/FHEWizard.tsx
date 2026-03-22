@@ -131,11 +131,14 @@ export function FHEWizard() {
 
   const memberOptions = useMemo(
     () =>
-      members.map((m) => (
-        <option key={m.id} value={m.name}>
-          {m.name}
-        </option>
-      )),
+      members.map((m) => {
+        const label = m.emoji ? `${m.emoji} ${m.name}` : m.name;
+        return (
+          <option key={m.id} value={m.name}>
+            {label}
+          </option>
+        );
+      }),
     [members],
   );
 

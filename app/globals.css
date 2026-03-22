@@ -4,6 +4,9 @@
 
 /* Solo blanco, negro y escala de grises */
 :root {
+  /* Altura aproximada del header global (sticky) para barras fijas debajo */
+  --header-sticky-offset: 4.5rem;
+
   --background: #ffffff;
   --foreground: #0a0a0a;
   --muted: #737373;
@@ -51,5 +54,106 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* —— Seguimiento: animaciones suaves (se reducen arriba si el usuario lo pide) —— */
+@keyframes seg-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes seg-check-pop {
+  0% {
+    transform: scale(0.92);
+  }
+  55% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes seg-bar-shine {
+  0% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes seg-complete-banner {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes seg-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes seg-slide-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--foreground);
+    opacity: 0.25;
+  }
+  50% {
+    box-shadow: 0 0 20px 2px var(--foreground);
+    opacity: 0.12;
+  }
+}
+
+.animate-seg-item-in {
+  animation: seg-item-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-seg-check-pop {
+  animation: seg-check-pop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.animate-seg-bar-shine {
+  animation: seg-bar-shine 2.8s ease-in-out infinite;
+}
+
+.animate-seg-complete-banner {
+  animation: seg-complete-banner 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-seg-dot-pulse {
+  animation: seg-dot-pulse 2s ease-in-out infinite;
+}
+
+.animate-seg-slide-glow {
+  animation: seg-slide-glow 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-seg-slide-glow {
+    animation: none;
   }
 }

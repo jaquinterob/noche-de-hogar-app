@@ -20,6 +20,8 @@ export type CompletedSteps = Partial<Record<CompletedStepKey, boolean>>;
 export interface FamilyMember {
   id: string;
   name: string;
+  /** Emoji opcional (p. ej. 👨) para identificar visualmente al miembro. */
+  emoji?: string;
 }
 
 export interface FamilyHomeEvening {
